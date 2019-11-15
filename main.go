@@ -37,8 +37,8 @@ func main() {
 	}
 	log.Println("main target:", test2)
 
-	resultMap := utility.StructToMap(test2)
-	resultMap2 := utility.StructToMap(test2)
+	resultMap, _ := utility.StructToMap(test2)
+	resultMap2, _ := utility.StructToMap(test2)
 	log.Println(resultMap)
 	log.Println(resultMap2)
 

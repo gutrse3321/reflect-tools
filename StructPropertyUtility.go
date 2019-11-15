@@ -11,49 +11,68 @@ import (
 )
 
 type StructPropertyUtility struct {
-	cacheStructProperty map[string]*PropertyBase
+	cacheStructProperty   map[string]*PropertyBase
+	cacheStructProperties map[string][]*PropertyBase
 }
 
 func NewStructPropertyUtility() *StructPropertyUtility {
-	utility := &StructPropertyUtility{cacheStructProperty: make(map[string]*PropertyBase)}
+	utility := &StructPropertyUtility{
+		cacheStructProperty:   make(map[string]*PropertyBase),
+		cacheStructProperties: make(map[string][]*PropertyBase),
+	}
 	return utility
 }
 
-//获取所有属性信息
-//TODO 现在是直接获取反射，需要封装个property的专门的结构体来记录所有的属性信息
-func (s *StructPropertyUtility) GetProperties(origin interface{}) (result *PropertyBase) {
+//获取单个属性信息
+func (s *StructPropertyUtility) GetProperty(origin interface{}) (result *PropertyBase) {
+	return nil
+}
+
+//获取所有可导出属性信息
+func (s *StructPropertyUtility) GetProperties(origin interface{}) ([]*PropertyBase, error) {
 	if !s.isStructType(origin) {
-		return
+		return nil, errors.New("must be has type struct")
 	}
 
 	name := s.getStructName(origin)
-	result = s.cacheStructProperty[name]
+	result := s.cacheStructProperties[name]
 	if result == nil {
-		base := &PropertyBase{
-			Type:  reflect.TypeOf(origin).Elem(),
-			Value: reflect.ValueOf(origin).Elem(),
+		typeOf, valueOf := s.getElem(origin)
+		fieldNum := typeOf.NumField()
+		var1 := 0
+		for var1 < fieldNum {
+			fieldType, fieldValue := typeOf.Field(var1), valueOf.Field(var1)
+			if fieldValue.CanSet() {
+				base := &PropertyBase{
+					Name:      fieldType.Name,
+					Type:      fieldType.Type.String(),
+					OtherInfo: fieldType,
+					ValueOf:   fieldValue,
+				}
+				result = append(result, base)
+			}
+			var1++
 		}
-		s.cacheStructProperty[name] = base
-		return base
+		s.cacheStructProperties[name] = result
+		return result, nil
 	}
 
-	return
+	return result, nil
 }
 
 //转换结构体属性和值为映射
-func (s *StructPropertyUtility) StructToMap(origin interface{}) (result map[string]interface{}) {
+func (s *StructPropertyUtility) StructToMap(origin interface{}) (result map[string]interface{}, err error) {
 	if !s.isStructType(origin) {
-		return
+		return nil, errors.New("must be has type struct")
 	}
 	result = make(map[string]interface{})
-	properties := s.GetProperties(origin)
-	var1 := 0
-	for var1 < properties.Value.NumField() {
-		field := properties.Value.Field(var1)
-		if field.CanSet() {
-			result[properties.Type.Field(var1).Name] = s.getRealValue(field)
-		}
-		var1++
+	properties, err := s.GetProperties(origin)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range properties {
+		result[item.Name] = s.getRealValue(item.ValueOf)
 	}
 	return
 }
@@ -68,13 +87,8 @@ func (s *StructPropertyUtility) CopyNotNull(origin, target interface{}) (err err
 		return errors.New("params has not be type struct")
 	}
 
-	//Elem() 如果取到值非Interface 或 pointer，使用Elem()方法转换为源地址的reflect.Value或reflect.Type，才能进行后续操作
-	//否则就是指针或接口的Value或Type了
-	//而且用了这个必定要传指针或接口类型的参数
-	originType := reflect.TypeOf(origin).Elem()
-	targetType := reflect.TypeOf(target).Elem()
-	originValue := reflect.ValueOf(origin).Elem()
-	targetValue := reflect.ValueOf(target).Elem()
+	originType, originValue := s.getElem(origin)
+	targetType, targetValue := s.getElem(target)
 	originFieldSize := originType.NumField()
 	targetFieldSize := targetType.NumField()
 	var1 := 0
@@ -112,14 +126,23 @@ func (s *StructPropertyUtility) getRealValue(valueOf reflect.Value) (result inte
 }
 
 func (s *StructPropertyUtility) getStructName(entity interface{}) string {
-	entityType := reflect.TypeOf(entity).Elem()
+	entityType, _ := s.getElem(entity)
 	return entityType.Name()
 }
 
 func (s *StructPropertyUtility) isStructType(entity interface{}) bool {
-	typeOf := reflect.TypeOf(entity).Elem()
+	typeOf, _ := s.getElem(entity)
 	if typeOf.Kind() != reflect.Struct {
 		return false
 	}
 	return true
+}
+
+func (s *StructPropertyUtility) getElem(entity interface{}) (reflect.Type, reflect.Value) {
+	//Elem() 如果取到值非Interface 或 pointer会panic错误，使用Elem()方法转换为源地址的reflect.Value或reflect.Type，才能进行后续操作
+	//否则就是指针或接口的Value或Type了
+	//而且用了这个必定要传指针或接口类型的参数
+	typeOf := reflect.TypeOf(entity).Elem()
+	valueOf := reflect.ValueOf(entity).Elem()
+	return typeOf, valueOf
 }

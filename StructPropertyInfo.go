@@ -8,8 +8,10 @@ package main
 import "reflect"
 
 type PropertyBase struct {
-	Type  reflect.Type
-	Value reflect.Value
+	Name      string
+	Type      string
+	OtherInfo reflect.StructField
+	ValueOf   reflect.Value
 }
 
 type StructPropertyInfo struct {
