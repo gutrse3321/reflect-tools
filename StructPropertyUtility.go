@@ -8,24 +8,18 @@ package main
 import (
 	"errors"
 	"reflect"
+	"strings"
 )
 
 type StructPropertyUtility struct {
-	cacheStructProperty   map[string]*PropertyBase
 	cacheStructProperties map[string][]*PropertyBase
 }
 
 func NewStructPropertyUtility() *StructPropertyUtility {
 	utility := &StructPropertyUtility{
-		cacheStructProperty:   make(map[string]*PropertyBase),
 		cacheStructProperties: make(map[string][]*PropertyBase),
 	}
 	return utility
-}
-
-//获取单个属性信息
-func (s *StructPropertyUtility) GetProperty(origin interface{}) (result *PropertyBase) {
-	return nil
 }
 
 //获取所有可导出属性信息
@@ -62,9 +56,6 @@ func (s *StructPropertyUtility) GetProperties(origin interface{}) ([]*PropertyBa
 
 //转换结构体属性和值为映射
 func (s *StructPropertyUtility) StructToMap(origin interface{}) (result map[string]interface{}, err error) {
-	if !s.isStructType(origin) {
-		return nil, errors.New("must be has type struct")
-	}
 	result = make(map[string]interface{})
 	properties, err := s.GetProperties(origin)
 	if err != nil {
@@ -83,28 +74,46 @@ func (s *StructPropertyUtility) CopyNotNull(origin, target interface{}) (err err
 		return errors.New("struct not be null")
 	}
 
-	if !s.isStructType(origin) || !s.isStructType(target) {
-		return errors.New("params has not be type struct")
+	originProperties, err := s.GetProperties(origin)
+	if err != nil {
+		return err
+	}
+	targetProperties, err := s.GetProperties(target)
+	if err != nil {
+		return err
 	}
 
-	originType, originValue := s.getElem(origin)
-	targetType, targetValue := s.getElem(target)
-	originFieldSize := originType.NumField()
-	targetFieldSize := targetType.NumField()
-	var1 := 0
-	for var1 < originFieldSize {
-		fieldName := originType.Field(var1).Name
-		fieldValue := originValue.Field(var1)
-		var2 := 0
-		for var2 < targetFieldSize {
-			if targetType.Field(var2).Name == fieldName && targetValue.Field(var2).CanSet() {
-				targetValue.Field(var2).Set(fieldValue)
+	for _, originItem := range originProperties {
+		for _, targetItem := range targetProperties {
+			if targetItem.Name == originItem.Name && targetItem.ValueOf.CanSet() {
+				targetItem.ValueOf.Set(originItem.ValueOf)
 			}
-			var2++
 		}
-		var1++
 	}
 	return nil
+}
+
+func (s *StructPropertyUtility) CheckTagKey(origin interface{}, field, tag string) (keyExist, valExist bool, err error) {
+	if origin == nil || field == "" || tag == "" {
+		return false, false, errors.New("Struct required or Field required or Tag required")
+	}
+
+	properties, err := s.GetProperties(origin)
+	if err != nil {
+		return false, false, err
+	}
+
+	var key, val bool
+	for _, item := range properties {
+		if item.Name == field && strings.HasPrefix(string(item.OtherInfo.Tag), tag+":") {
+			key = true
+			if item.OtherInfo.Tag.Get(tag) != "" {
+				val = true
+			}
+			return key, val, nil
+		}
+	}
+	return key, val, nil
 }
 
 func (s *StructPropertyUtility) getRealValue(valueOf reflect.Value) (result interface{}) {
